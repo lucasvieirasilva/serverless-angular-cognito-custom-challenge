@@ -1,0 +1,99 @@
+# serverless.yml
+service: cognito-custom-challenge
+
+plugins:
+  - serverless-webpack
+  - serverless-hooks-plugin
+
+custom:
+  stage: ${opt:stage, self:provider.stage}
+  variables: ${file(./config.yml)}
+  webpack:
+    webpackConfig: './webpack.config.js'
+    includeModules: false
+  hooks:
+    after:aws:deploy:finalize:cleanup:
+      - ./../client/scripts/setup.sh
+
+package:
+  individually: true
+
+provider:
+  name: aws
+  runtime: nodejs8.10
+  stage: dev
+  timeout: 30
+  memorySize: 128
+  region: ${opt:region, self:custom.variables.region}
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - logs:CreateLogGroup
+        - logs:CreateLogStream
+        - logs:PutLogEvents
+      Resource: '*'
+
+functions:            
+  defineChallenge:
+    handler: src/challenge/define.handler
+    events:
+      - cognitoUserPool:
+          pool: CustomChallenge
+          trigger: DefineAuthChallenge
+
+  createChallenge:
+    handler: src/challenge/create.handler
+    events:
+      - cognitoUserPool:
+          pool: CustomChallenge
+          trigger: CreateAuthChallenge
+
+  verifyChallenge:
+    handler: src/challenge/verify.handler
+    events:
+      - cognitoUserPool:
+          pool: CustomChallenge
+          trigger: VerifyAuthChallengeResponse
+
+  preSignUp:
+    handler: src/confirm.handler
+    events:
+      - cognitoUserPool:
+          pool: CustomChallenge
+          trigger: PreSignUp
+  
+resources:
+  Resources:
+    # Cognito - User Pool
+    CognitoUserPoolCustomChallenge:
+      Type: AWS::Cognito::UserPool
+      Properties:
+        UserPoolName: cognito-custom-challenge-user-pool
+        AutoVerifiedAttributes:
+          - email
+        MfaConfiguration: OFF
+        Schema:
+          - AttributeDataType: String
+            Name: email
+            Required: true
+
+    AngularAppClient:
+      Type: AWS::Cognito::UserPoolClient
+      Properties:
+        GenerateSecret: false
+        RefreshTokenValidity: 200
+        ExplicitAuthFlows:
+          - CUSTOM_AUTH_FLOW_ONLY
+        UserPoolId:
+          Ref: CognitoUserPoolCustomChallenge
+
+  Outputs:
+    UserPoolId:
+      Description: "The ID of the user pool that is created."
+      Value:
+        Ref: CognitoUserPoolCustomChallenge
+
+    AngularAppClientId:
+      Description: "The ID of the user pool react app client id."
+      Value:
+        Ref: AngularAppClient
