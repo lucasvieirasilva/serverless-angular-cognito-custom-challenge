@@ -19,7 +19,7 @@ npm i -g serverless
 Navigate to Folder
 
 ```shellscript
-cd api
+cd backend
 ```
 
 Install dependencies
